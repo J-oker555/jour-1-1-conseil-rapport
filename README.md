@@ -18,20 +18,20 @@ Reprendre l'analyse de detection des canulars en supprimant les fuites methodolo
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe analyse.py --help
+.\.venv\Scripts\python.exe analyse.py
 ```
 
 Quand les donnees seront disponibles :
 
 ```powershell
-.\.venv\Scripts\python.exe analyse.py --data data/raw/ufo.csv --report RAPPORT.md
+.\.venv\Scripts\python.exe analyse.py
 ```
 
 ## Structure
 
-- `analyse.py` : point d'entree unique demande par l'enonce.
-- `src/bat/` : fonctions reutilisables pour charger, decouper, transformer et evaluer.
+- `analyse.py` : point d'entree unique demande par l'enonce, du telechargement au rapport.
+- `src/ufo_pipeline/` : fonctions reutilisables pour charger, decouper, transformer et evaluer.
+- `src/bat/` : premiers garde-fous conserves pendant l'initialisation.
 - `RAPPORT.md` : rapport humain, phase par phase, avec les nombres avant/apres.
 - `docs/github-issues.md` : issues a creer sur GitHub.
 - `tests/` : tests concentres sur les regles qui evitent les fuites.
-
