@@ -2,6 +2,7 @@ from pathlib import Path
 
 from .advanced import AdvancedResults
 from .data import ConversionAnomaly, LoadResult
+from .decision_support import DecisionResults
 from .labels import HoaxLabelResult
 from .modeling import BaselineMetrics, ModelMetrics
 
@@ -121,6 +122,75 @@ def _format_aberrations(results: AdvancedResults) -> str:
     return "\n".join(f"- {name}: {count}" for name, count in results.phase11.aberration_counts.items())
 
 
+def _format_cost_table(decisions: DecisionResults) -> str:
+    lines = [
+        "| Frontiere | Faux negatifs | Faux positifs | Facture |",
+        "| ---: | ---: | ---: | ---: |",
+    ]
+    for row in decisions.phase13.rows:
+        lines.append(f"| {row.threshold:.2f} | {row.false_negatives} | {row.false_positives} | {row.cost} |")
+    return "\n".join(lines)
+
+
+def _format_calibration_table(rows) -> str:
+    lines = [
+        "| Tranche | Releves | Probabilite annoncee | Proportion observee |",
+        "| --- | ---: | ---: | ---: |",
+    ]
+    for row in rows:
+        lines.append(
+            f"| [{row.lower:.1f}; {row.upper:.1f}] | {row.count} | "
+            f"{pct(row.mean_probability)} | {pct(row.observed_rate)} |"
+        )
+    return "\n".join(lines)
+
+
+def _format_importance(decisions: DecisionResults) -> str:
+    lines = ["| Colonne | Chute moyenne du rappel |", "| --- | ---: |"]
+    for column, importance in decisions.phase16.global_importance:
+        lines.append(f"| `{column}` | {importance:.4f} |")
+    return "\n".join(lines)
+
+
+def _format_local_explanations(decisions: DecisionResults) -> str:
+    sections = []
+    for case in decisions.phase16.cases:
+        top_for = ", ".join(f"{name} ({value:+.2f})" for name, value in case.top_for_hoax[:3])
+        top_against = ", ".join(f"{name} ({value:+.2f})" for name, value in case.top_against_hoax[:3])
+        against_label = "Contre" if case.top_against_hoax[0][1] < 0 else "Freins faibles"
+        sections.append(
+            f"- Dossier index `{case.index}` ({case.kind}): probabilite {pct(case.probability)}, "
+            f"prediction canular `{case.predicted_hoax}`, verite `{case.actual_hoax}`. "
+            f"{case.summary} Vers canular: {top_for}. {against_label}: {top_against}."
+        )
+    return "\n".join(sections)
+
+
+def _format_zone_table(decisions: DecisionResults) -> str:
+    lines = [
+        "| Zone | Releves | Proportion canulars | Rappel | Precision | Facture |",
+        "| --- | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    global_row = decisions.phase17.global_row
+    lines.append(
+        f"| {global_row.zone} | {global_row.count} | {pct(global_row.hoax_rate)} | "
+        f"{pct(global_row.recall)} | {pct(global_row.precision)} | {global_row.cost} |"
+    )
+    for row in decisions.phase17.rows:
+        lines.append(
+            f"| {row.zone} | {row.count} | {pct(row.hoax_rate)} | "
+            f"{pct(row.recall)} | {pct(row.precision)} | {row.cost} |"
+        )
+    return "\n".join(lines)
+
+
+def _format_yearly_rates(decisions: DecisionResults) -> str:
+    lines = ["| Annee | Releves | Proportion canulars |", "| ---: | ---: | ---: |"]
+    for row in decisions.phase18.yearly_rates:
+        lines.append(f"| {row.year} | {row.count} | {pct(row.hoax_rate)} |")
+    return "\n".join(lines)
+
+
 def render_report(
     load_result: LoadResult,
     anomalies: dict[str, ConversionAnomaly],
@@ -130,6 +200,7 @@ def render_report(
     clean_metrics: ModelMetrics,
     baseline_metrics: BaselineMetrics,
     advanced: AdvancedResults,
+    decisions: DecisionResults,
 ) -> str:
     anomaly_lines = _format_conversion_anomalies(anomalies)
     leakage_lines = "\n".join(
@@ -290,9 +361,85 @@ Decision: {advanced.phase11.decision}
 - Modele final avec ville, heure cyclique et shape nettoyee: {_metric_pair(advanced.phase12.final_metrics)}
 
 L'heure est encodee par sinus/cosinus: 23h est bien plus proche de 0h que de 20h. Les categories rares sont apprises dans le pipeline sur l'apprentissage seul, sans utiliser la cible.
+
+## Phase 13 - La facture du Bureau
+
+La grille de cout est celle du Conseil: un canular laisse passer coute 30 credits, un releve honnete marque canular coute 2 credits, et les bonnes decisions coutent 0.
+
+{_format_cost_table(decisions)}
+
+- Frontiere par defaut: {decisions.phase13.default_threshold:.2f}
+- Facture a 0.5: {decisions.phase13.default_cost} credits
+- Frontiere retenue: {decisions.phase13.best_threshold:.2f}
+- Facture retenue: {decisions.phase13.best_cost} credits
+- Ecart: {decisions.phase13.saved_credits} credits economises
+
+La decision ne s'appuie donc pas sur un joli 0.5, mais sur la facture minimale pour le Bureau.
+
+## Phase 14 - Une promesse a 80 %
+
+Avant calibration:
+
+{_format_calibration_table(decisions.phase14.before)}
+
+Le systeme est {decisions.phase14.error_direction}.
+
+Apres calibration sigmoid apprise sur l'apprentissage seul:
+
+{_format_calibration_table(decisions.phase14.after)}
+
+Les tranches restent bruitees quand elles contiennent peu de releves, mais les probabilites lues par le Conseil sont moins deconnectees de ce qui arrive vraiment.
+
+## Phase 15 - Deux analystes, deux chiffres
+
+- Nombre principal avec fourchette sur {decisions.phase15.split_count} decoupes: rappel entre {pct(decisions.phase15.recall_low)} et {pct(decisions.phase15.recall_high)}, precision entre {pct(decisions.phase15.precision_low)} et {pct(decisions.phase15.precision_high)}.
+- Taille moyenne de la partie test: {decisions.phase15.test_size}
+- Nombre moyen de canulars reels dans le test: {decisions.phase15.test_hoax_count}
+- Reponse au Conseil: {decisions.phase15.answer}
+
+Le chiffre nu est banni: avec aussi peu de canulars, quelques dossiers deplaces changent visiblement la mesure.
+
+## Phase 16 - Trois dossiers sur le bureau
+
+Explications locales:
+
+{_format_local_explanations(decisions)}
+
+Classement global des colonnes par permutation:
+
+{_format_importance(decisions)}
+
+La colonne dont la place me surprend le plus est `{decisions.phase16.surprising_column}`: elle rappelle que le modele capte aussi les habitudes de transmission, pas seulement la description physique de l'apparition.
+
+## Phase 17 - L'angle mort du Bureau
+
+{_format_zone_table(decisions)}
+
+Decision: {decisions.phase17.decision}
+
+L'ecart avec le global se lit surtout dans les effectifs: les Etats-Unis dominent le test, donc une moyenne globale peut cacher une zone mal mesuree ailleurs.
+
+## Phase 18 - La transmission d'archive
+
+Proportion de canulars par annee:
+
+{_format_yearly_rates(decisions)}
+
+Epreuve ancien vers recent:
+
+- Phase 8, decoupe temporelle de reference: rappel {pct(decisions.phase18.phase8_recall)}, precision {pct(decisions.phase18.phase8_precision)}
+- Entrainement sur les releves les plus anciens, test sur les plus recents: rappel {pct(decisions.phase18.old_to_recent_recall)}, precision {pct(decisions.phase18.old_to_recent_precision)}
+
+Surveillance sans connaitre la verite:
+
+{chr(10).join(f"- {indicator}" for indicator in decisions.phase18.monitoring_indicators)}
+
+- Frequence: {decisions.phase18.monitoring_frequency}
+- Regle d'alerte: {decisions.phase18.alert_rule}
+
+Ces indicateurs ne demandent pas l'etiquette de canular. Ils surveillent si les dossiers entrants ne ressemblent plus aux dossiers sur lesquels la decision a ete defendue.
 """
 
 
 def write_report(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
-

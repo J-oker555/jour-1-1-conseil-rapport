@@ -1,6 +1,7 @@
 from src.ufo_pipeline.advanced import run_advanced_phases
 from src.ufo_pipeline.config import RAW_DATA, REPORT
 from src.ufo_pipeline.data import convert_types, download_data, load_transmission
+from src.ufo_pipeline.decision_support import run_decision_phases
 from src.ufo_pipeline.features import build_feature_set
 from src.ufo_pipeline.labels import describe_hoax_label
 from src.ufo_pipeline.modeling import baseline_always_not_hoax_metrics, train_and_evaluate
@@ -21,6 +22,12 @@ def main() -> None:
     clean_metrics = train_and_evaluate(clean_features, target)
     baseline_metrics = baseline_always_not_hoax_metrics(target)
     advanced = run_advanced_phases(frame, target)
+    decisions = run_decision_phases(
+        frame,
+        target,
+        phase8_recall=advanced.phase8.temporal_metrics.recall,
+        phase8_precision=advanced.phase8.temporal_metrics.precision,
+    )
 
     report = render_report(
         load_result=load_result,
@@ -31,6 +38,7 @@ def main() -> None:
         clean_metrics=clean_metrics,
         baseline_metrics=baseline_metrics,
         advanced=advanced,
+        decisions=decisions,
     )
     write_report(REPORT, report)
     print(f"Rapport ecrit dans {REPORT}")

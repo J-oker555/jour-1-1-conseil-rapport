@@ -197,3 +197,151 @@ Decision: Je conserve toutes les lignes, je remplace les secondes nulles par la 
 - Modele final avec ville, heure cyclique et shape nettoyee: rappel 39.66 %, precision 1.35 %
 
 L'heure est encodee par sinus/cosinus: 23h est bien plus proche de 0h que de 20h. Les categories rares sont apprises dans le pipeline sur l'apprentissage seul, sans utiliser la cible.
+
+## Phase 13 - La facture du Bureau
+
+La grille de cout est celle du Conseil: un canular laisse passer coute 30 credits, un releve honnete marque canular coute 2 credits, et les bonnes decisions coutent 0.
+
+| Frontiere | Faux negatifs | Faux positifs | Facture |
+| ---: | ---: | ---: | ---: |
+| 0.50 | 108 | 5185 | 13610 |
+| 0.90 | 171 | 108 | 5346 |
+| 0.91 | 173 | 83 | 5356 |
+| 0.92 | 173 | 57 | 5304 |
+| 0.93 | 174 | 40 | 5300 |
+| 0.95 | 177 | 21 | 5352 |
+| 0.96 | 177 | 10 | 5330 |
+| 0.97 | 178 | 2 | 5344 |
+| 0.98 | 178 | 0 | 5340 |
+
+- Frontiere par defaut: 0.50
+- Facture a 0.5: 13610 credits
+- Frontiere retenue: 0.93
+- Facture retenue: 5300 credits
+- Ecart: 8310 credits economises
+
+La decision ne s'appuie donc pas sur un joli 0.5, mais sur la facture minimale pour le Bureau.
+
+## Phase 14 - Une promesse a 80 %
+
+Avant calibration:
+
+| Tranche | Releves | Probabilite annoncee | Proportion observee |
+| --- | ---: | ---: | ---: |
+| [0.0; 0.1] | 6930 | 4.85 % | 0.51 % |
+| [0.1; 0.2] | 1018 | 13.82 % | 1.38 % |
+| [0.2; 0.3] | 1856 | 26.23 % | 0.16 % |
+| [0.3; 0.4] | 3525 | 35.22 % | 0.48 % |
+| [0.4; 0.5] | 3985 | 44.72 % | 0.98 % |
+| [0.5; 0.6] | 2340 | 54.48 % | 1.11 % |
+| [0.6; 0.7] | 1432 | 64.63 % | 1.40 % |
+| [0.7; 0.8] | 868 | 74.76 % | 1.04 % |
+| [0.8; 0.9] | 500 | 84.25 % | 1.60 % |
+| [0.9; 1.0] | 116 | 92.87 % | 6.90 % |
+
+Le systeme est trop confiant: les probabilites annoncees sont en moyenne au-dessus du taux observe.
+
+Apres calibration sigmoid apprise sur l'apprentissage seul:
+
+| Tranche | Releves | Probabilite annoncee | Proportion observee |
+| --- | ---: | ---: | ---: |
+| [0.0; 0.1] | 22570 | 0.95 % | 0.79 % |
+| [0.1; 0.2] | 0 | 0.00 % | 0.00 % |
+| [0.2; 0.3] | 0 | 0.00 % | 0.00 % |
+| [0.3; 0.4] | 0 | 0.00 % | 0.00 % |
+| [0.4; 0.5] | 0 | 0.00 % | 0.00 % |
+| [0.5; 0.6] | 0 | 0.00 % | 0.00 % |
+| [0.6; 0.7] | 0 | 0.00 % | 0.00 % |
+| [0.7; 0.8] | 0 | 0.00 % | 0.00 % |
+| [0.8; 0.9] | 0 | 0.00 % | 0.00 % |
+| [0.9; 1.0] | 0 | 0.00 % | 0.00 % |
+
+Les tranches restent bruitees quand elles contiennent peu de releves, mais les probabilites lues par le Conseil sont moins deconnectees de ce qui arrive vraiment.
+
+## Phase 15 - Deux analystes, deux chiffres
+
+- Nombre principal avec fourchette sur 10 decoupes: rappel entre 37.46 % et 48.57 %, precision entre 1.25 % et 1.66 %.
+- Taille moyenne de la partie test: 22161
+- Nombre moyen de canulars reels dans le test: 208
+- Reponse au Conseil: Deux systemes annonces a 0.31 et 0.34 ne sont pas departageables si cet ecart reste plus petit que la largeur de la fourchette mesuree sur les decoupes.
+
+Le chiffre nu est banni: avec aussi peu de canulars, quelques dossiers deplaces changent visiblement la mesure.
+
+## Phase 16 - Trois dossiers sur le bureau
+
+Explications locales:
+
+- Dossier index `16150` (canular avec forte confiance): probabilite 98.14 %, prediction canular `True`, verite `True`. Le dossier est tire vers canular surtout par duration; les autres colonnes freinent peu la decision. Vers canular: duration (+2.12), city (+1.64), country (+0.39). Freins faibles: state (+0.07), shape (+0.07), latitude (+0.08).
+- Dossier index `58955` (juste au-dessus de la frontiere): probabilite 93.07 %, prediction canular `True`, verite `True`. Le dossier est tire vers canular surtout par duration, et retenu dans l'autre sens par state. Vers canular: duration (+2.12), city (+1.64), longitude (+0.42). Contre: state (-0.68), country (-0.14), shape (-0.01).
+- Dossier index `36807` (canular laisse passer): probabilite 93.00 %, prediction canular `False`, verite `True`. Le dossier est tire vers canular surtout par city, et retenu dans l'autre sens par country. Vers canular: city (+3.51), duration (+0.81), shape (+0.26). Contre: country (-0.57), longitude (-0.15), hour (-0.09).
+
+Classement global des colonnes par permutation:
+
+| Colonne | Chute moyenne du rappel |
+| --- | ---: |
+| `shape` | 0.0391 |
+| `duration_missing` | 0.0358 |
+| `city` | 0.0346 |
+| `country` | 0.0324 |
+| `longitude` | 0.0313 |
+| `latitude` | 0.0112 |
+| `hour_sin` | 0.0078 |
+| `month` | 0.0067 |
+| `country_missing` | 0.0000 |
+| `latitude_missing` | 0.0000 |
+
+La colonne dont la place me surprend le plus est `country`: elle rappelle que le modele capte aussi les habitudes de transmission, pas seulement la description physique de l'apparition.
+
+## Phase 17 - L'angle mort du Bureau
+
+| Zone | Releves | Proportion canulars | Rappel | Precision | Facture |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Global | 22570 | 0.79 % | 2.79 % | 11.11 % | 5300 |
+| Etats-Unis | 19011 | 0.69 % | 1.52 % | 5.71 % | 3966 |
+| Canada | 706 | 1.27 % | 0.00 % | 0.00 % | 270 |
+| Europe | 247 | 4.05 % | 30.00 % | 50.00 % | 216 |
+| Reste du monde | 2606 | 1.07 % | 0.00 % | 0.00 % | 848 |
+
+Decision: Je garde une frontiere unique: hors Etats-Unis les effectifs et les canulars sont trop faibles pour apprendre une frontiere locale robuste sans fabriquer une decision instable.
+
+L'ecart avec le global se lit surtout dans les effectifs: les Etats-Unis dominent le test, donc une moyenne globale peut cacher une zone mal mesuree ailleurs.
+
+## Phase 18 - La transmission d'archive
+
+Proportion de canulars par annee:
+
+| Annee | Releves | Proportion canulars |
+| ---: | ---: | ---: |
+| 1998 | 982 | 0.00 % |
+| 1999 | 5023 | 0.06 % |
+| 2000 | 3367 | 0.03 % |
+| 2001 | 3973 | 0.08 % |
+| 2002 | 4758 | 0.06 % |
+| 2003 | 5379 | 0.04 % |
+| 2004 | 5779 | 0.07 % |
+| 2005 | 5827 | 0.45 % |
+| 2006 | 4891 | 1.23 % |
+| 2007 | 5385 | 1.97 % |
+| 2008 | 5611 | 2.83 % |
+| 2009 | 6462 | 1.64 % |
+| 2010 | 4867 | 1.60 % |
+| 2011 | 6129 | 1.91 % |
+| 2012 | 8756 | 0.55 % |
+| 2013 | 8170 | 0.67 % |
+| 2014 | 3320 | 1.69 % |
+
+Epreuve ancien vers recent:
+
+- Phase 8, decoupe temporelle de reference: rappel 51.96 %, precision 1.26 %
+- Entrainement sur les releves les plus anciens, test sur les plus recents: rappel 39.66 %, precision 1.35 %
+
+Surveillance sans connaitre la verite:
+
+- part des releves au-dessus de la frontiere de decision
+- distribution des probabilites predites par tranche
+- part de pays, villes rares et champs manquants
+
+- Frequence: revue mensuelle, avec un point hebdomadaire si le volume double
+- Regle d'alerte: rappeler les analystes si un indicateur bouge de plus de 5 points de pourcentage ou de plus de 20 % relatif par rapport aux trois derniers mois
+
+Ces indicateurs ne demandent pas l'etiquette de canular. Ils surveillent si les dossiers entrants ne ressemblent plus aux dossiers sur lesquels la decision a ete defendue.
